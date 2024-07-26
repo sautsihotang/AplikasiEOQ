@@ -27,3 +27,28 @@ Sebelum menjalankan aplikasi, pastikan Anda memiliki:
    ```bash
    git clone https://github.com/username/AplikasiEOQ.git
    cd AplikasiEOQ
+
+2. **Instalasi Dependencies:**
+    Instal GORM dan driver PostgreSQL menggunakan Go Modules:
+
+    ```bash
+    go mod tidy
+
+3. **Konfigurasi Databas**
+    Buat file .env di direktori root proyek Anda dengan konfigurasi berikut:
+    
+    ```bash
+    DB_USER=your_username
+    DB_PASSWORD=your_password
+    DB_NAME=your_database
+    DB_HOST=localhost
+    DB_PORT=5432
+
+4. **Menjalankan Aplikasi:**
+    
+    ```bash
+    go run main.go
+
+
+
+
