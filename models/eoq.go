@@ -2,12 +2,18 @@ package models
 
 import "time"
 
+// Eoq model
 type Eoq struct {
-	ID                 int     `gorm:"primaryKey;autoIncrement"`
-	IDBarang           int     `gorm:"index"` // Index to reference barang
-	NilaiEOQ           float64 `gorm:"type:decimal(10,2)"`
-	Periode            string  `gorm:"type:varchar(255)"`
-	TanggalPerhitungan time.Time
-	CreatedAt          time.Time `gorm:"autoCreateTime"`
-	UpdatedAt          time.Time `gorm:"autoUpdateTime"`
+	ID                 int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	IDBarang           int       `gorm:"index" json:"id_barang"` // Index to reference barang
+	NilaiEOQ           float64   `gorm:"type:decimal(10,2)" json:"nilai_eoq"`
+	Periode            string    `gorm:"type:varchar(255)" json:"periode"`
+	TanggalPerhitungan time.Time `json:"tanggal_perhitungan"`
+	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+// TableName sets the insert table name for this struct type
+func (Eoq) TableName() string {
+	return "eoq"
 }
