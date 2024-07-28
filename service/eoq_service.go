@@ -11,7 +11,160 @@ import (
 	"gorm.io/gorm"
 )
 
-// service supplier
+// service penyimpanan
+func CreatePenyimpanan(ctx *gin.Context) (models.Penyimpanan, error) {
+
+	db := database.GetDB()
+
+	var penyimpanan models.Penyimpanan
+	if err := ctx.ShouldBindJSON(&penyimpanan); err != nil {
+		return penyimpanan, err
+	}
+
+	// Set the CreatedAt and UpdatedAt fields
+	now := time.Now()
+	penyimpanan.CreatedAt = now
+	penyimpanan.UpdatedAt = now
+
+	// Query to insert supplier and return the id
+	tsql := fmt.Sprintf(`
+		INSERT INTO penyimpanan (jenis, biaya_penyimpanan, tanggal_penyimpanan, created_at, updated_at) 
+		VALUES ('%s', '%f', '%s', '%s', '%s') RETURNING id`,
+		penyimpanan.Jenis, penyimpanan.BiayaPenyimpanan, penyimpanan.TanggalPenyimpanan.Format(time.RFC3339), penyimpanan.CreatedAt.Format(time.RFC3339), penyimpanan.UpdatedAt.Format(time.RFC3339))
+
+	// Execute query and get the returned ID
+	var penyimpananID int
+	err := db.Raw(tsql).Row().Scan(&penyimpananID)
+	if err != nil {
+		return penyimpanan, err
+	}
+
+	penyimpanan.ID = penyimpananID
+
+	return penyimpanan, nil
+
+}
+
+// GetPenyimpanans service to get all Penyimpanans
+func GetPenyimpanans(ctx *gin.Context) ([]models.Penyimpanan, error) {
+	db := database.GetDB()
+	var penyimpanans []models.Penyimpanan
+
+	// Query to get all penyimpanans
+	tsql := `SELECT id, jenis, biaya_penyimpanan, tanggal_penyimpanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penyimpanan`
+
+	// Execute query
+	rows, err := db.Raw(tsql).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var penyimpanan models.Penyimpanan
+		if err := rows.Scan(&penyimpanan.ID, &penyimpanan.Jenis, &penyimpanan.BiayaPenyimpanan, &penyimpanan.TanggalPenyimpanan, &penyimpanan.CreatedAt, &penyimpanan.UpdatedAt); err != nil {
+			return nil, err
+		}
+		penyimpanans = append(penyimpanans, penyimpanan)
+	}
+
+	return penyimpanans, nil
+}
+
+// GetPenyimpananbyId service to get a penyimpanan by ID
+func GetPenyimpananbyId(id int) (models.Penyimpanan, error) {
+	db := database.GetDB()
+
+	var penyimpanan models.Penyimpanan
+
+	// Query to get penyimpanan by ID
+	tsql := `SELECT id, jenis, biaya_penyimpanan, tanggal_penyimpanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penyimpanan WHERE id = ?`
+
+	// Execute query
+	row := db.Raw(tsql, id).Row()
+	if err := row.Scan(&penyimpanan.ID, &penyimpanan.Jenis, &penyimpanan.BiayaPenyimpanan, &penyimpanan.TanggalPenyimpanan, &penyimpanan.CreatedAt, &penyimpanan.UpdatedAt); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return penyimpanan, gorm.ErrRecordNotFound
+		}
+		return penyimpanan, err
+	}
+
+	return penyimpanan, nil
+}
+
+// UpdatePenyimpanan service to update penyimpanan with optional fields
+func UpdatePenyimpanan(updatePenyimpanan models.Penyimpanan) (models.Penyimpanan, error) {
+	db := database.GetDB()
+
+	// Remove ID from the map to prevent updating it
+	updatedFields := map[string]interface{}{}
+	if updatePenyimpanan.Jenis != "" {
+		updatedFields["jenis"] = updatePenyimpanan.Jenis
+	}
+	if updatePenyimpanan.BiayaPenyimpanan != 0 {
+		updatedFields["biaya_penyimpanan"] = updatePenyimpanan.BiayaPenyimpanan
+	}
+	if !updatePenyimpanan.TanggalPenyimpanan.IsZero() {
+		updatedFields["tanggal_penyimpanan"] = updatePenyimpanan.TanggalPenyimpanan
+	}
+	updatedFields["updated_at"] = time.Now()
+
+	if len(updatedFields) == 0 {
+		return updatePenyimpanan, errors.New("no fields to update")
+	}
+
+	// Query to update penyimpanan by ID
+	setClause := ""
+	args := []interface{}{}
+	for field, value := range updatedFields {
+		setClause += fmt.Sprintf("%s = ?, ", field)
+		args = append(args, value)
+	}
+	setClause = setClause[:len(setClause)-2] // remove the last comma and space
+	args = append(args, updatePenyimpanan.ID)
+
+	tsql := fmt.Sprintf("UPDATE penyimpanan SET %s WHERE id = ?", setClause)
+
+	// Execute query
+	result := db.Exec(tsql, args...)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return updatePenyimpanan, gorm.ErrRecordNotFound
+		}
+		return updatePenyimpanan, result.Error
+	}
+
+	// Retrieve the updated penyimpanan
+	row := db.Raw("SELECT id, jenis, biaya_penyimpanan, tanggal_penyimpanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penyimpanan WHERE id = ?", updatePenyimpanan.ID).Row()
+	if err := row.Scan(&updatePenyimpanan.ID, &updatePenyimpanan.Jenis, &updatePenyimpanan.BiayaPenyimpanan, &updatePenyimpanan.TanggalPenyimpanan, &updatePenyimpanan.CreatedAt, &updatePenyimpanan.UpdatedAt); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return updatePenyimpanan, gorm.ErrRecordNotFound
+		}
+		return updatePenyimpanan, err
+	}
+
+	return updatePenyimpanan, nil
+}
+
+func DeletePenyimpanan(id int) error {
+	db := database.GetDB()
+
+	// Query to delete penyimpanan by ID
+	tsql := `DELETE FROM penyimpanan WHERE id = ?`
+
+	// Execute query
+	result := db.Exec(tsql, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return result.Error
+	}
+
+	return nil
+}
+
+// service barang
 func CreateBarang(ctx *gin.Context) (models.Barang, error) {
 
 	db := database.GetDB()

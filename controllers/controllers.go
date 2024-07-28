@@ -17,6 +17,126 @@ func Index(ctx *gin.Context) {
 	})
 }
 
+// controller create penyimpanan
+func CreatePenyimpanan(ctx *gin.Context) {
+	penyimpanan, err := service.CreatePenyimpanan(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":        400,
+			"message":     err.Error(),
+			"penyimpanan": penyimpanan,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":        200,
+			"message":     "success create penyimpanan",
+			"penyimpanan": penyimpanan,
+		})
+	}
+}
+
+// controller get all barang
+func GetPenyimpanans(ctx *gin.Context) {
+	penyimpanan, err := service.GetPenyimpanans(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":        400,
+			"message":     err.Error(),
+			"penyimpanan": penyimpanan,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":        200,
+			"message":     "success - Get all penyimpanan",
+			"penyimpanan": penyimpanan,
+		})
+	}
+}
+
+// controller penyimpanan by id
+func GetPenyimpananbyId(ctx *gin.Context) {
+	idStr := ctx.Query("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": "Invalid ID",
+		})
+		return
+	}
+	penyimpanan, err := service.GetPenyimpananbyId(id)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":        400,
+			"message":     err.Error(),
+			"penyimpanan": penyimpanan,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":        200,
+			"message":     "success - Get penyimpanan",
+			"penyimpanan": penyimpanan,
+		})
+	}
+}
+
+func UpdatePenyimpanan(ctx *gin.Context) {
+	var updatePenyimpanan models.Penyimpanan
+	if err := ctx.ShouldBindJSON(&updatePenyimpanan); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"code":    http.StatusBadRequest,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	penyimpanan, err := service.UpdatePenyimpanan(updatePenyimpanan)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"code":    http.StatusNotFound,
+				"message": "Penyimpanan not found",
+			})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"code":    http.StatusInternalServerError,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"code":        http.StatusOK,
+		"message":     "penyimpanan updated successfully",
+		"penyimpanan": penyimpanan,
+	})
+}
+
+func DeletePenyimpanan(ctx *gin.Context) {
+	idStr := ctx.Query("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": "Invalid ID",
+		})
+		return
+	}
+	err = service.DeletePenyimpanan(id)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": err.Error(),
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":    200,
+			"message": "success - delete penyimpanan",
+		})
+	}
+}
+
 // controller create barang
 func CreateBarang(ctx *gin.Context) {
 	barang, err := service.CreateBarang(ctx)
@@ -29,7 +149,7 @@ func CreateBarang(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":    200,
-			"message": "succes create barang",
+			"message": "success create barang",
 			"barang":  barang,
 		})
 	}
@@ -47,7 +167,7 @@ func GetBarangs(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":    200,
-			"message": "succes - Get all barang",
+			"message": "success - Get all barang",
 			"barang":  barangs,
 		})
 	}
@@ -67,14 +187,14 @@ func GetBarangbyId(ctx *gin.Context) {
 	barang, err := service.GetBarangByID(id)
 	if err != nil {
 		ctx.JSON(400, gin.H{
-			"code":     400,
-			"message":  err.Error(),
-			"supplier": barang,
+			"code":    400,
+			"message": err.Error(),
+			"barang":  barang,
 		})
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":    200,
-			"message": "succes - Get barang",
+			"message": "success - Get barang",
 			"barang":  barang,
 		})
 	}
@@ -132,7 +252,7 @@ func DeleteBarang(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":    200,
-			"message": "succes - delete barang",
+			"message": "success - delete barang",
 		})
 	}
 }
@@ -149,7 +269,7 @@ func CreateSupplier(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":     200,
-			"message":  "succes create supplier",
+			"message":  "success create supplier",
 			"supplier": supplier,
 		})
 	}
@@ -167,7 +287,7 @@ func GetSuppliers(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":     200,
-			"message":  "succes - Get all supplier",
+			"message":  "success - Get all supplier",
 			"supplier": suppliers,
 		})
 	}
@@ -194,7 +314,7 @@ func GetSupplierbyId(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":     200,
-			"message":  "succes - Get supplier",
+			"message":  "success - Get supplier",
 			"supplier": supplier,
 		})
 	}
@@ -252,7 +372,7 @@ func DeleteSupplier(ctx *gin.Context) {
 	} else {
 		ctx.JSON(200, gin.H{
 			"code":    200,
-			"message": "succes - delete supplier",
+			"message": "success - delete supplier",
 		})
 	}
 }

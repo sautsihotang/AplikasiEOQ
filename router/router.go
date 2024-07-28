@@ -27,6 +27,13 @@ func StartApp() *gin.Engine {
 		apiV1Group.GET("/barang", controllers.GetBarangbyId)
 		apiV1Group.PUT("/barang", controllers.UpdateBarang)
 		apiV1Group.DELETE("/barang", controllers.DeleteBarang)
+
+		//penyimpanan
+		apiV1Group.POST("/penyimpanan", controllers.CreatePenyimpanan)
+		apiV1Group.GET("/penyimpanan/all", controllers.GetPenyimpanans)
+		apiV1Group.GET("/penyimpanan", controllers.GetPenyimpananbyId)
+		apiV1Group.PUT("/penyimpanan", controllers.UpdatePenyimpanan)
+		apiV1Group.DELETE("/penyimpanan", controllers.DeletePenyimpanan)
 	}
 
 	return r
