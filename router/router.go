@@ -3,11 +3,21 @@ package router
 import (
 	"aplikasieoq/controllers"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func StartApp() *gin.Engine {
 	r := gin.Default()
+
+	// Konfigurasi CORS
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE"}
+	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type"}
+	config.AllowCredentials = true
+
+	r.Use(cors.New(config))
 
 	apiV1Group := r.Group("/api/v1")
 	{
