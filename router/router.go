@@ -34,6 +34,27 @@ func StartApp() *gin.Engine {
 		apiV1Group.GET("/penyimpanan", controllers.GetPenyimpananbyId)
 		apiV1Group.PUT("/penyimpanan", controllers.UpdatePenyimpanan)
 		apiV1Group.DELETE("/penyimpanan", controllers.DeletePenyimpanan)
+
+		//user
+		apiV1Group.POST("/user", controllers.CreateUser)
+		apiV1Group.GET("/user/all", controllers.GetUsers)
+		apiV1Group.GET("/user", controllers.GetUserbyId)
+		apiV1Group.PUT("/user", controllers.UpdateUser)
+		apiV1Group.DELETE("/user", controllers.DeleteUser)
+
+		//pemesanan
+		apiV1Group.POST("/pemesanan", controllers.CreatePemesanan)
+		apiV1Group.GET("/pemesanan/all", controllers.GetPemesanans)
+		apiV1Group.GET("/pemesanan", controllers.GetPemesananbyId)
+		apiV1Group.PUT("/pemesanan", controllers.UpdatePemesanan)
+		apiV1Group.DELETE("/pemesanan", controllers.DeletePemesanan)
+
+		//penjualan
+		apiV1Group.POST("/penjualan", controllers.CreatePenjualan)
+		apiV1Group.GET("/penjualan/all", controllers.GetPenjualans)
+		apiV1Group.GET("/penjualan", controllers.GetPenjualanbyId)
+		apiV1Group.PUT("/penjualan", controllers.UpdatePenjualan)
+		apiV1Group.DELETE("/penjualan", controllers.DeletePenjualan)
 	}
 
 	return r

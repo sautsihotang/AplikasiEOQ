@@ -11,6 +11,500 @@ import (
 	"gorm.io/gorm"
 )
 
+// service penjualan
+func CreatePenjualan(ctx *gin.Context) (models.Penjualan, error) {
+
+	db := database.GetDB()
+
+	var penjualan models.Penjualan
+	if err := ctx.ShouldBindJSON(&penjualan); err != nil {
+		return penjualan, err
+	}
+
+	// Set the CreatedAt and UpdatedAt fields
+	now := time.Now()
+	penjualan.CreatedAt = now
+	penjualan.UpdatedAt = now
+
+	// Query to insert supplier and return the id
+	tsql := fmt.Sprintf(`
+		INSERT INTO penjualan (id_user, id_barang, kuantitas, harga_satuan, total_harga, tanggal_penjualan, created_at, updated_at) 
+		VALUES ('%d', '%d', '%d', '%f', '%f','%s', '%s', '%s') RETURNING id`,
+		penjualan.IDUser, penjualan.IDBarang, penjualan.Kuantitas, penjualan.HargaSatuan, penjualan.TotalHarga, penjualan.TanggalPenjualan.Format(time.RFC3339), penjualan.CreatedAt.Format(time.RFC3339), penjualan.UpdatedAt.Format(time.RFC3339))
+
+	// Execute query and get the returned ID
+	var penjualanID int
+	err := db.Raw(tsql).Row().Scan(&penjualanID)
+	if err != nil {
+		return penjualan, err
+	}
+
+	penjualan.ID = penjualanID
+
+	return penjualan, nil
+
+}
+
+// GetPenjualans service to get all Penjualans
+func GetPenjualans(ctx *gin.Context) ([]models.Penjualan, error) {
+	db := database.GetDB()
+	var penjualans []models.Penjualan
+
+	// Query to get all penjualans
+	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, tanggal_penjualan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penjualan`
+
+	// Execute query
+	rows, err := db.Raw(tsql).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var penjualan models.Penjualan
+		if err := rows.Scan(&penjualan.ID, &penjualan.IDUser, &penjualan.IDBarang, &penjualan.Kuantitas, &penjualan.HargaSatuan, &penjualan.TotalHarga, &penjualan.TanggalPenjualan, &penjualan.CreatedAt, &penjualan.UpdatedAt); err != nil {
+			return nil, err
+		}
+		penjualans = append(penjualans, penjualan)
+	}
+
+	return penjualans, nil
+}
+
+// GetPenjualanbyId service to get a penjualan by ID
+func GetPenjualanbyId(id int) (models.Penjualan, error) {
+	db := database.GetDB()
+
+	var penjualan models.Penjualan
+
+	// Query to get penyimpanan by ID
+	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, tanggal_penjualan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penjualan WHERE id = ?`
+
+	// Execute query
+	row := db.Raw(tsql, id).Row()
+	if err := row.Scan(&penjualan.ID, &penjualan.IDUser, &penjualan.IDBarang, &penjualan.Kuantitas, &penjualan.HargaSatuan, &penjualan.TotalHarga, &penjualan.TanggalPenjualan, &penjualan.CreatedAt, &penjualan.UpdatedAt); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return penjualan, gorm.ErrRecordNotFound
+		}
+		return penjualan, err
+	}
+
+	return penjualan, nil
+}
+
+// UpdatePenjualan service to update penjualan with optional fields
+func UpdatePenjualan(updatePenjualan models.Penjualan) (models.Penjualan, error) {
+	db := database.GetDB()
+
+	// Remove ID from the map to prevent updating it
+	updatedFields := map[string]interface{}{}
+	if updatePenjualan.IDUser != 0 {
+		updatedFields["id_user"] = updatePenjualan.IDUser
+	}
+	if updatePenjualan.IDBarang != 0 {
+		updatedFields["id_barang"] = updatePenjualan.IDBarang
+	}
+	if updatePenjualan.Kuantitas != 0 {
+		updatedFields["kuantitas"] = updatePenjualan.Kuantitas
+	}
+	if updatePenjualan.HargaSatuan != 0 {
+		updatedFields["harga_satuan"] = updatePenjualan.HargaSatuan
+	}
+	if updatePenjualan.TotalHarga != 0 {
+		updatedFields["total_harga"] = updatePenjualan.TotalHarga
+	}
+	if !updatePenjualan.TanggalPenjualan.IsZero() {
+		updatedFields["tanggal_penjualan"] = updatePenjualan.TanggalPenjualan
+	}
+	updatedFields["updated_at"] = time.Now()
+
+	if len(updatedFields) == 0 {
+		return updatePenjualan, errors.New("no fields to update")
+	}
+
+	// Query to update penyimpanan by ID
+	setClause := ""
+	args := []interface{}{}
+	for field, value := range updatedFields {
+		setClause += fmt.Sprintf("%s = ?, ", field)
+		args = append(args, value)
+	}
+	setClause = setClause[:len(setClause)-2] // remove the last comma and space
+	args = append(args, updatePenjualan.ID)
+
+	tsql := fmt.Sprintf("UPDATE penjualan SET %s WHERE id = ?", setClause)
+
+	// Execute query
+	result := db.Exec(tsql, args...)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return updatePenjualan, gorm.ErrRecordNotFound
+		}
+		return updatePenjualan, result.Error
+	}
+
+	// Retrieve the updated penyimpanan
+	row := db.Raw("SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, tanggal_penjualan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penjualan WHERE id = ?", updatePenjualan.ID).Row()
+	if err := row.Scan(&updatePenjualan.ID, &updatePenjualan.IDUser, &updatePenjualan.IDBarang, &updatePenjualan.Kuantitas, &updatePenjualan.HargaSatuan, &updatePenjualan.TotalHarga, &updatePenjualan.TanggalPenjualan, &updatePenjualan.CreatedAt, &updatePenjualan.UpdatedAt); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return updatePenjualan, gorm.ErrRecordNotFound
+		}
+		return updatePenjualan, err
+	}
+
+	return updatePenjualan, nil
+}
+
+func DeletePenjualan(id int) error {
+	db := database.GetDB()
+
+	// Query to delete penjualan by ID
+	tsql := `DELETE FROM penjualan WHERE id = ?`
+
+	// Execute query
+	result := db.Exec(tsql, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return result.Error
+	}
+
+	return nil
+}
+
+// service penyimpanan
+func CreatePemesanan(ctx *gin.Context) (models.Pemesanan, error) {
+
+	db := database.GetDB()
+
+	var pemesanan models.Pemesanan
+	if err := ctx.ShouldBindJSON(&pemesanan); err != nil {
+		return pemesanan, err
+	}
+
+	// Set the CreatedAt and UpdatedAt fields
+	now := time.Now()
+	pemesanan.CreatedAt = now
+	pemesanan.UpdatedAt = now
+
+	// Query to insert supplier and return the id
+	tsql := fmt.Sprintf(`
+		INSERT INTO pemesanan (id_user, id_barang, kuantitas, harga_satuan, total_harga, biaya_telepon, biaya_adm, biaya_transportasi, total_biaya_pemesanan, tanggal_pemesanan, created_at, updated_at) 
+		VALUES ('%d', '%d', '%d', '%f', '%f','%f','%f','%f','%f','%s', '%s', '%s') RETURNING id`,
+		pemesanan.IDUser, pemesanan.IDBarang, pemesanan.Kuantitas, pemesanan.HargaSatuan, pemesanan.TotalHarga, pemesanan.BiayaTelepon, pemesanan.BiayaAdm, pemesanan.BiayaTransportasi, pemesanan.TotalBiayaPemesanan, pemesanan.TanggalPemesanan.Format(time.RFC3339), pemesanan.CreatedAt.Format(time.RFC3339), pemesanan.UpdatedAt.Format(time.RFC3339))
+
+	// Execute query and get the returned ID
+	var pemesananID int
+	err := db.Raw(tsql).Row().Scan(&pemesananID)
+	if err != nil {
+		return pemesanan, err
+	}
+
+	pemesanan.ID = pemesananID
+
+	return pemesanan, nil
+
+}
+
+// GetPemesanans service to get all Penyimpanans
+func GetPemesanans(ctx *gin.Context) ([]models.Pemesanan, error) {
+	db := database.GetDB()
+	var pemesanans []models.Pemesanan
+
+	// Query to get all pemesanans
+	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, biaya_telepon, biaya_adm, biaya_transportasi, total_biaya_pemesanan, tanggal_pemesanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM pemesanan`
+
+	// Execute query
+	rows, err := db.Raw(tsql).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pemesanan models.Pemesanan
+		if err := rows.Scan(&pemesanan.ID, &pemesanan.IDUser, &pemesanan.IDBarang, &pemesanan.Kuantitas, &pemesanan.HargaSatuan, &pemesanan.TotalHarga, &pemesanan.BiayaTelepon, &pemesanan.BiayaAdm, &pemesanan.BiayaTransportasi, &pemesanan.TotalBiayaPemesanan, &pemesanan.TanggalPemesanan, &pemesanan.CreatedAt, &pemesanan.UpdatedAt); err != nil {
+			return nil, err
+		}
+		pemesanans = append(pemesanans, pemesanan)
+	}
+
+	return pemesanans, nil
+}
+
+// GetPemesananbyId service to get a pemesanan by ID
+func GetPemesananbyId(id int) (models.Pemesanan, error) {
+	db := database.GetDB()
+
+	var pemesanan models.Pemesanan
+
+	// Query to get penyimpanan by ID
+	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, biaya_telepon, biaya_adm, biaya_transportasi, total_biaya_pemesanan, tanggal_pemesanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM pemesanan WHERE id = ?`
+
+	// Execute query
+	row := db.Raw(tsql, id).Row()
+	if err := row.Scan(&pemesanan.ID, &pemesanan.IDUser, &pemesanan.IDBarang, &pemesanan.Kuantitas, &pemesanan.HargaSatuan, &pemesanan.TotalHarga, &pemesanan.BiayaTelepon, &pemesanan.BiayaAdm, &pemesanan.BiayaTransportasi, &pemesanan.TotalBiayaPemesanan, &pemesanan.TanggalPemesanan, &pemesanan.CreatedAt, &pemesanan.UpdatedAt); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pemesanan, gorm.ErrRecordNotFound
+		}
+		return pemesanan, err
+	}
+
+	return pemesanan, nil
+}
+
+// UpdatePemesanan service to update pemesanan with optional fields
+func UpdatePemesanan(updatePemesanan models.Pemesanan) (models.Pemesanan, error) {
+	db := database.GetDB()
+
+	// Remove ID from the map to prevent updating it
+	updatedFields := map[string]interface{}{}
+	if updatePemesanan.IDUser != 0 {
+		updatedFields["id_user"] = updatePemesanan.IDUser
+	}
+	if updatePemesanan.IDBarang != 0 {
+		updatedFields["id_barang"] = updatePemesanan.IDBarang
+	}
+	if updatePemesanan.Kuantitas != 0 {
+		updatedFields["kuantitas"] = updatePemesanan.Kuantitas
+	}
+	if updatePemesanan.HargaSatuan != 0 {
+		updatedFields["harga_satuan"] = updatePemesanan.HargaSatuan
+	}
+	if updatePemesanan.TotalHarga != 0 {
+		updatedFields["total_harga"] = updatePemesanan.TotalHarga
+	}
+	if updatePemesanan.BiayaTelepon != 0 {
+		updatedFields["biaya_telepon"] = updatePemesanan.BiayaTelepon
+	}
+	if updatePemesanan.BiayaAdm != 0 {
+		updatedFields["biaya_adm"] = updatePemesanan.BiayaAdm
+	}
+	if updatePemesanan.BiayaTransportasi != 0 {
+		updatedFields["biaya_transportasi"] = updatePemesanan.BiayaTransportasi
+	}
+	if updatePemesanan.TotalBiayaPemesanan != 0 {
+		updatedFields["total_biaya_pemesanan"] = updatePemesanan.TotalBiayaPemesanan
+	}
+	if !updatePemesanan.TanggalPemesanan.IsZero() {
+		updatedFields["tanggal_pemesanan"] = updatePemesanan.TanggalPemesanan
+	}
+	updatedFields["updated_at"] = time.Now()
+
+	if len(updatedFields) == 0 {
+		return updatePemesanan, errors.New("no fields to update")
+	}
+
+	// Query to update penyimpanan by ID
+	setClause := ""
+	args := []interface{}{}
+	for field, value := range updatedFields {
+		setClause += fmt.Sprintf("%s = ?, ", field)
+		args = append(args, value)
+	}
+	setClause = setClause[:len(setClause)-2] // remove the last comma and space
+	args = append(args, updatePemesanan.ID)
+
+	tsql := fmt.Sprintf("UPDATE pemesanan SET %s WHERE id = ?", setClause)
+
+	// Execute query
+	result := db.Exec(tsql, args...)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return updatePemesanan, gorm.ErrRecordNotFound
+		}
+		return updatePemesanan, result.Error
+	}
+
+	// Retrieve the updated penyimpanan
+	row := db.Raw("SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, biaya_telepon, biaya_adm, biaya_transportasi, total_biaya_pemesanan, tanggal_pemesanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM pemesanan WHERE id = ?", updatePemesanan.ID).Row()
+	if err := row.Scan(&updatePemesanan.ID, &updatePemesanan.IDUser, &updatePemesanan.IDBarang, &updatePemesanan.Kuantitas, &updatePemesanan.HargaSatuan, &updatePemesanan.TotalHarga, &updatePemesanan.BiayaTelepon, &updatePemesanan.BiayaAdm, &updatePemesanan.BiayaTransportasi, &updatePemesanan.TotalBiayaPemesanan, &updatePemesanan.TanggalPemesanan, &updatePemesanan.CreatedAt, &updatePemesanan.UpdatedAt); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return updatePemesanan, gorm.ErrRecordNotFound
+		}
+		return updatePemesanan, err
+	}
+
+	return updatePemesanan, nil
+}
+
+func DeletePemesanan(id int) error {
+	db := database.GetDB()
+
+	// Query to delete pemesanan by ID
+	tsql := `DELETE FROM pemesanan WHERE id = ?`
+
+	// Execute query
+	result := db.Exec(tsql, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return result.Error
+	}
+
+	return nil
+}
+
+func CreateUser(ctx *gin.Context) (models.User, error) {
+	db := database.GetDB()
+
+	var user models.User
+	if err := ctx.ShouldBindJSON(&user); err != nil {
+		return user, err
+	}
+
+	// Set the CreatedAt and UpdatedAt fields
+	now := time.Now()
+	user.CreatedAt = now
+	user.UpdatedAt = now
+
+	// Prepare query to insert user and return the id
+	query := `
+		INSERT INTO "user" (nama, username, password, posisi, hp, alamat, created_at, updated_at) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
+
+	// Execute query and get the returned ID
+	var userID int
+	err := db.Raw(query, user.Nama, user.Username, user.Password, user.Posisi, user.HP, user.Alamat, user.CreatedAt, user.UpdatedAt).Scan(&userID).Error
+	if err != nil {
+		return user, err
+	}
+
+	user.ID = userID
+
+	return user, nil
+}
+
+// GetUsers service to get all GetUsers
+func GetUsers(ctx *gin.Context) ([]models.User, error) {
+	db := database.GetDB()
+	var users []models.User
+
+	// Query to get all users
+	tsql := `SELECT id, nama, username, password, posisi, hp, alamat, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM "user"`
+
+	// Execute query
+	rows, err := db.Raw(tsql).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(&user.ID, &user.Nama, &user.Username, &user.Password, &user.Posisi, &user.HP, &user.Alamat, &user.CreatedAt, &user.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// GetUserbyId service to get a user by ID
+func GetUserbyId(id int) (models.User, error) {
+	db := database.GetDB()
+
+	var user models.User
+
+	// Query to get user by ID
+	tsql := `SELECT id, nama, username, password, posisi, hp, alamat, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM "user" WHERE id = ?`
+
+	// Execute query
+	row := db.Raw(tsql, id).Row()
+	if err := row.Scan(&user.ID, &user.Nama, &user.Username, &user.Password, &user.Posisi, &user.HP, &user.Alamat, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return user, gorm.ErrRecordNotFound
+		}
+		return user, err
+	}
+
+	return user, nil
+}
+
+// UpdateUser service to update User with optional fields
+func UpdateUser(updatedUser models.User) (models.User, error) {
+	db := database.GetDB()
+
+	// Remove ID from the map to prevent updating it
+	updatedFields := map[string]interface{}{}
+	if updatedUser.Nama != "" {
+		updatedFields["nama"] = updatedUser.Nama
+	}
+	if updatedUser.Username != "" {
+		updatedFields["username"] = updatedUser.Username
+	}
+	if updatedUser.Password != "" {
+		updatedFields["password"] = updatedUser.Password
+	}
+	if updatedUser.Posisi != "" {
+		updatedFields["posisi"] = updatedUser.Posisi
+	}
+	if updatedUser.HP != "" {
+		updatedFields["hp"] = updatedUser.HP
+	}
+	if updatedUser.Alamat != "" {
+		updatedFields["alamat"] = updatedUser.Alamat
+	}
+	updatedFields["updated_at"] = time.Now()
+
+	if len(updatedFields) == 0 {
+		return updatedUser, errors.New("no fields to update")
+	}
+
+	// Query to update user by ID
+	setClause := ""
+	args := []interface{}{}
+	for field, value := range updatedFields {
+		setClause += fmt.Sprintf("%s = ?, ", field)
+		args = append(args, value)
+	}
+	setClause = setClause[:len(setClause)-2] // remove the last comma and space
+	args = append(args, updatedUser.ID)
+
+	tsql := fmt.Sprintf(`UPDATE "user" SET %s WHERE id = ?`, setClause)
+
+	// Execute query
+	result := db.Exec(tsql, args...)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return updatedUser, gorm.ErrRecordNotFound
+		}
+		return updatedUser, result.Error
+	}
+
+	// Retrieve the updated user
+	row := db.Raw(`SELECT id, nama, username, password, posisi, hp, alamat, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM "user" WHERE id = ?`, updatedUser.ID).Row()
+	if err := row.Scan(&updatedUser.ID, &updatedUser.Nama, &updatedUser.Username, &updatedUser.Password, &updatedUser.Posisi, &updatedUser.HP, &updatedUser.Alamat, &updatedUser.CreatedAt, &updatedUser.UpdatedAt); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return updatedUser, gorm.ErrRecordNotFound
+		}
+		return updatedUser, err
+	}
+
+	return updatedUser, nil
+}
+
+func DeleteUser(id int) error {
+	db := database.GetDB()
+
+	// Query to delete user by ID
+	tsql := `DELETE FROM "user" WHERE id = ?`
+
+	// Execute query
+	result := db.Exec(tsql, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return result.Error
+	}
+
+	return nil
+}
+
 // service penyimpanan
 func CreatePenyimpanan(ctx *gin.Context) (models.Penyimpanan, error) {
 
