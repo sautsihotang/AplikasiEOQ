@@ -11,6 +11,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// Define a struct to hold the joined data from Barang and Supplier
+type BarangWithSupplier struct {
+	ID                 int       `json:"id"`
+	IDSupplier         int       `json:"id_supplier"`
+	NamaBarang         string    `json:"nama_barang"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	SupplierNama       string    `json:"supplier_nama"`
+	SupplierPerusahaan string    `json:"supplier_perusahaan"`
+	SupplierKontak     string    `json:"supplier_kontak"`
+	SupplierAlamat     string    `json:"supplier_alamat"`
+}
+
 // service penjualan
 func CreatePenjualan(ctx *gin.Context) (models.Penjualan, error) {
 
@@ -183,6 +196,13 @@ func CreatePemesanan(ctx *gin.Context) (models.Pemesanan, error) {
 		return pemesanan, err
 	}
 
+	hargaSatuanFloat := float64(pemesanan.HargaSatuan)
+	totalHarga := float64(pemesanan.Kuantitas) * hargaSatuanFloat
+	totalHarga = float64(int(totalHarga))
+
+	pemesanan.TotalHarga = models.Float64OrString(totalHarga)
+	pemesanan.TotalBiayaPemesanan = pemesanan.BiayaTelepon + pemesanan.BiayaAdm + pemesanan.BiayaTransportasi
+
 	// Set the CreatedAt and UpdatedAt fields
 	now := time.Now()
 	pemesanan.CreatedAt = now
@@ -208,12 +228,30 @@ func CreatePemesanan(ctx *gin.Context) (models.Pemesanan, error) {
 }
 
 // GetPemesanans service to get all Penyimpanans
-func GetPemesanans(ctx *gin.Context) ([]models.Pemesanan, error) {
+func GetPemesanans(ctx *gin.Context) ([]models.PemesananWithBarangWithSupplier, error) {
 	db := database.GetDB()
-	var pemesanans []models.Pemesanan
+	var pemesanans []models.PemesananWithBarangWithSupplier
 
-	// Query to get all pemesanans
-	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, biaya_telepon, biaya_adm, biaya_transportasi, total_biaya_pemesanan, tanggal_pemesanan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM pemesanan`
+	// Query to get all pemesanans with inner join and aliases
+	tsql := `SELECT 
+                 p.id AS id, 
+                 p.id_user AS id_user, 
+                 p.id_barang AS id_barang, 
+                 b.nama_barang AS barang_nama, 
+                 s.nama AS supplier_nama,
+                 p.kuantitas AS kuantitas, 
+                 p.harga_satuan AS harga_satuan, 
+                 p.total_harga AS total_harga, 
+                 p.biaya_telepon AS biaya_telepon, 
+                 p.biaya_adm AS biaya_adm, 
+                 p.biaya_transportasi AS biaya_transportasi, 
+                 p.total_biaya_pemesanan AS total_biaya_pemesanan, 
+                 p.tanggal_pemesanan AS tanggal_pemesanan, 
+                 COALESCE(p.created_at, NOW()) AS created_at, 
+                 COALESCE(p.updated_at, NOW()) AS updated_at
+            FROM pemesanan p
+            INNER JOIN barang b ON p.id_barang = b.id
+            INNER JOIN supplier s ON b.id_supplier = s.id`
 
 	// Execute query
 	rows, err := db.Raw(tsql).Rows()
@@ -223,10 +261,27 @@ func GetPemesanans(ctx *gin.Context) ([]models.Pemesanan, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var pemesanan models.Pemesanan
-		if err := rows.Scan(&pemesanan.ID, &pemesanan.IDUser, &pemesanan.IDBarang, &pemesanan.Kuantitas, &pemesanan.HargaSatuan, &pemesanan.TotalHarga, &pemesanan.BiayaTelepon, &pemesanan.BiayaAdm, &pemesanan.BiayaTransportasi, &pemesanan.TotalBiayaPemesanan, &pemesanan.TanggalPemesanan, &pemesanan.CreatedAt, &pemesanan.UpdatedAt); err != nil {
+		var pemesanan models.PemesananWithBarangWithSupplier
+		if err := rows.Scan(
+			&pemesanan.ID,
+			&pemesanan.IDUser,
+			&pemesanan.IDBarang,
+			&pemesanan.BarangNama,
+			&pemesanan.SupplierNama,
+			&pemesanan.Kuantitas,
+			&pemesanan.HargaSatuan,
+			&pemesanan.TotalHarga,
+			&pemesanan.BiayaTelepon,
+			&pemesanan.BiayaAdm,
+			&pemesanan.BiayaTransportasi,
+			&pemesanan.TotalBiayaPemesanan,
+			&pemesanan.TanggalPemesanan,
+			&pemesanan.CreatedAt,
+			&pemesanan.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
+
 		pemesanans = append(pemesanans, pemesanan)
 	}
 
@@ -692,13 +747,26 @@ func CreateBarang(ctx *gin.Context) (models.Barang, error) {
 
 }
 
-// GetBarangs service to get all Barangs
-func GetBarangs(ctx *gin.Context) ([]models.Barang, error) {
+// GetBarangs service to get all Barangs with supplier details
+func GetBarangs(ctx *gin.Context) ([]BarangWithSupplier, error) {
 	db := database.GetDB()
-	var barangs []models.Barang
+	var barangs []BarangWithSupplier
 
-	// Query to get all suppliers
-	tsql := `SELECT id, id_supplier, nama_barang, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM barang`
+	// Query to get all Barangs with supplier details
+	tsql := `SELECT 
+                b.id, 
+                b.id_supplier, 
+                b.nama_barang, 
+                COALESCE(b.created_at, NOW()) AS created_at, 
+                COALESCE(b.updated_at, NOW()) AS updated_at,
+                s.Nama AS supplier_nama,
+                s.perusahaan AS supplier_perusahaan,
+                s.kontak AS supplier_kontak,
+                s.alamat AS supplier_alamat
+            FROM 
+                Barang b
+            INNER JOIN 
+                Supplier s ON b.id_supplier = s.id;`
 
 	// Execute query
 	rows, err := db.Raw(tsql).Rows()
@@ -708,8 +776,18 @@ func GetBarangs(ctx *gin.Context) ([]models.Barang, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var barang models.Barang
-		if err := rows.Scan(&barang.ID, &barang.IDSupplier, &barang.NamaBarang, &barang.CreatedAt, &barang.UpdatedAt); err != nil {
+		var barang BarangWithSupplier
+		if err := rows.Scan(
+			&barang.ID,
+			&barang.IDSupplier,
+			&barang.NamaBarang,
+			&barang.CreatedAt,
+			&barang.UpdatedAt,
+			&barang.SupplierNama,
+			&barang.SupplierPerusahaan,
+			&barang.SupplierKontak,
+			&barang.SupplierAlamat,
+		); err != nil {
 			return nil, err
 		}
 		barangs = append(barangs, barang)
@@ -718,18 +796,43 @@ func GetBarangs(ctx *gin.Context) ([]models.Barang, error) {
 	return barangs, nil
 }
 
-// GetBarangrByID service to get a barang by ID
-func GetBarangByID(id int) (models.Barang, error) {
+// GetBarangByID service to get a barang by ID
+func GetBarangByID(id int) (BarangWithSupplier, error) {
 	db := database.GetDB()
 
-	var barang models.Barang
+	var barang BarangWithSupplier
 
-	// Query to get barang by ID
-	tsql := `SELECT id, id_supplier, nama_barang, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM barang WHERE id = ?`
+	// Query to get barang by ID with supplier details
+	tsql := `SELECT 
+                b.id, 
+                b.id_supplier, 
+                b.nama_barang, 
+                COALESCE(b.created_at, NOW()) AS created_at, 
+                COALESCE(b.updated_at, NOW()) AS updated_at,
+                s.Nama AS supplier_nama,
+                s.perusahaan AS supplier_perusahaan,
+                s.kontak AS supplier_kontak,
+                s.alamat AS supplier_alamat
+            FROM 
+                Barang b
+            INNER JOIN 
+                Supplier s ON b.id_supplier = s.id
+            WHERE 
+                b.id = ?`
 
 	// Execute query
 	row := db.Raw(tsql, id).Row()
-	if err := row.Scan(&barang.ID, &barang.IDSupplier, &barang.NamaBarang, &barang.CreatedAt, &barang.UpdatedAt); err != nil {
+	if err := row.Scan(
+		&barang.ID,
+		&barang.IDSupplier,
+		&barang.NamaBarang,
+		&barang.CreatedAt,
+		&barang.UpdatedAt,
+		&barang.SupplierNama,
+		&barang.SupplierPerusahaan,
+		&barang.SupplierKontak,
+		&barang.SupplierAlamat,
+	); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return barang, gorm.ErrRecordNotFound
 		}

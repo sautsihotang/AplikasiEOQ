@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: 
+      context: .
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=localhost
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_PORT=5432
+      - DB_NAME=eoq_database
