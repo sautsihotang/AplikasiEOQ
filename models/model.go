@@ -71,3 +71,17 @@ type PemesananWithBarangWithSupplier struct {
 	CreatedAt           time.Time       `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt           time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
 }
+
+type PenjualanWithBarangWithSupplier struct {
+	ID               int             `json:"id"`
+	IDUser           int             `gorm:"index" json:"id_user"`
+	IDBarang         int             `gorm:"index" json:"id_barang"`
+	BarangNama       string          `json:"barang_nama"`   // Tambahan
+	SupplierNama     string          `json:"supplier_nama"` // Tambahan
+	Kuantitas        int             `json:"kuantitas"`
+	HargaSatuan      Float64OrString `gorm:"type:decimal(20,2)" json:"harga_satuan"`
+	TotalHarga       Float64OrString `gorm:"type:decimal(20,2)" json:"total_harga"`
+	TanggalPenjualan time.Time       `json:"tanggal_penjualan"`
+	CreatedAt        time.Time       `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
+}

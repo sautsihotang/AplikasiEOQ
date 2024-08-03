@@ -24,6 +24,9 @@ func StartApp() *gin.Engine {
 		//TEST
 		apiV1Group.GET("/", controllers.Index)
 
+		//EOQ
+		apiV1Group.POST("/eoq", controllers.CalculateEOQ)
+
 		//supplier
 		apiV1Group.POST("/supplier", controllers.CreateSupplier)
 		apiV1Group.GET("/suppliers", controllers.GetSuppliers)

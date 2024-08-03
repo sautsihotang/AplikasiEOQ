@@ -17,6 +17,25 @@ func Index(ctx *gin.Context) {
 	})
 }
 
+// hitung eoq
+
+func CalculateEOQ(ctx *gin.Context) {
+	eoq, err := service.CalculateEOQ(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": err.Error(),
+			"eoq":     eoq,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":    200,
+			"message": "success create eoq",
+			"eoq":     eoq,
+		})
+	}
+}
+
 // controller create penjualan
 func CreatePenjualan(ctx *gin.Context) {
 	penjualan, err := service.CreatePenjualan(ctx)

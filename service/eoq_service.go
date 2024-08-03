@@ -5,6 +5,8 @@ import (
 	"aplikasieoq/models"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,287 @@ type BarangWithSupplier struct {
 	SupplierAlamat     string    `json:"supplier_alamat"`
 }
 
+// CalculateEOQ menghitung EOQ dan frekuensi pemesanan
+func CalculateEOQ(ctx *gin.Context) (models.Eoq, error) {
+	db := database.GetDB()
+	var eoq models.Eoq
+	if err := ctx.ShouldBindJSON(&eoq); err != nil {
+		return eoq, err
+	}
+
+	// Cetak payload JSON
+	fmt.Printf("Payload received: %+v\n", eoq.IDBarang)
+	fmt.Printf("Payload received: %+v\n", eoq.Periode)
+	fmt.Printf("Payload received: %+v\n", eoq.TanggalPerhitungan)
+
+	// Konversi eoq.Periode (string) ke int
+	periodeStr := eoq.Periode
+	periodeInt, err := strconv.Atoi(periodeStr)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mengonversi periode: %v", err)
+	}
+
+	// Mengambil frekuensi pemesanan per tahun
+	frekuensiPemesananPerBarangPerTahun, err := TotalFrekuensiPemesananPerBarangPerTahun(db, eoq.IDBarang, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan frekuensi pemesanan per barang per tahun: %v", err)
+	}
+
+	frekuensiPemesananPerTahun, err := TotalFrekuensiPemesananPerTahun(db, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan frekuensi pemesanan per tahun: %v", err)
+	}
+
+	// D
+	quantityBarangPerTahun, err := TotalQuantityBarangPerTahun(db, eoq.IDBarang, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan quantity barang per tahun: %v", err)
+	}
+
+	quantityPerTahun, err := TotalQuantityPerTahun(db, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan quantity per tahun: %v", err)
+	}
+
+	biayaPemesananPerTahun, err := TotalBiayaPemesananPerTahun(db, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan biaya pemesanan per tahun: %v", err)
+	}
+
+	biayaPenyimpananPerTahun, err := TotalBiayaPenyimpananPerTahun(db, periodeInt)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan biaya Penyimpanan per tahun: %v", err)
+	}
+
+	// Menampilkan frekuensi pemesanan per tahun
+	fmt.Printf("Frekuensi pemesanan per barang per tahun: %d\n", frekuensiPemesananPerBarangPerTahun)
+	fmt.Printf("Frekuensi pemesanan per tahun: %d\n", frekuensiPemesananPerTahun)
+	fmt.Printf("Quantity barang per tahun: %d\n", quantityBarangPerTahun)
+	fmt.Printf("Quantity per tahun: %d\n", quantityPerTahun)
+	fmt.Printf("Biaya Pemesanan per tahun: %.f\n", biayaPemesananPerTahun)
+	fmt.Printf("Biaya Penyimpanan per tahun: %.f\n", biayaPenyimpananPerTahun)
+
+	// S
+	s, err := BiayaPemesananSetiapKaliPesan(biayaPemesananPerTahun, frekuensiPemesananPerTahun)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan biaya pemesanan setiap kali pesan: %v", err)
+	}
+
+	// H
+
+	h, err := BiayaPenyimpananPerBarang(quantityBarangPerTahun, quantityPerTahun, biayaPenyimpananPerTahun)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan biaya Penyimpanan per barang: %v", err)
+	}
+
+	fmt.Printf("biaya pemesanan setiap kali pesan: %d\n", s)
+	fmt.Printf("biaya penyimpanan per barang: %.f\n", h)
+
+	nilaiEoq, err := calNilaiEoq(quantityBarangPerTahun, s, h)
+	if err != nil {
+		return eoq, fmt.Errorf("gagal mendapatkan nilai EOQ per barang: %v", err)
+	}
+
+	eoq.NilaiEOQ = math.Round(nilaiEoq)
+
+	fmt.Printf("Nilai EOQ per barang: %.f\n", nilaiEoq)
+
+	now := time.Now()
+	eoq.CreatedAt = now
+	eoq.UpdatedAt = now
+	eoq.NilaiEOQ = nilaiEoq // bagaiaman cara agar data yg masuk ke db %.f
+
+	tsql := fmt.Sprintf(`
+		INSERT INTO eoq (id_barang, nilai_eoq, periode, tanggal_perhitungan, created_at, updated_at) 
+		VALUES ('%d', '%f', '%s', '%s', '%s', '%s') RETURNING id`,
+		eoq.IDBarang, eoq.NilaiEOQ, eoq.Periode, eoq.TanggalPerhitungan.Format(time.RFC3339), eoq.CreatedAt.Format(time.RFC3339), eoq.UpdatedAt.Format(time.RFC3339))
+
+	var eoqID int
+	err = db.Raw(tsql).Row().Scan(&eoqID)
+	if err != nil {
+		return eoq, err
+	}
+
+	eoq.ID = eoqID
+
+	return eoq, nil
+}
+
+// calNilaiEoq menghitung Economic Order Quantity (EOQ)
+func calNilaiEoq(d, s int, h float64) (float64, error) {
+	if h <= 0 {
+		return 0, fmt.Errorf("biaya penyimpanan per unit per tahun harus lebih besar dari nol")
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("permintaan tahunan harus lebih besar dari nol")
+	}
+
+	// Konversi s ke float64 untuk operasi matematika
+	sFloat := float64(s)
+	dFloat := float64(d)
+
+	// Hitung EOQ menggunakan rumus √(2DS/H)
+	result := math.Sqrt((2 * sFloat * dFloat) / h)
+
+	return result, nil
+}
+
+// BiayaPenyimpananPerBarang menghitung biaya penyimpanan per barang berdasarkan kuantitas dan total biaya penyimpanan
+func BiayaPenyimpananPerBarang(qtyPerBarang, qtyPerTahun int, biayaPenyimpananPertahun float64) (float64, error) {
+	if qtyPerTahun == 0 {
+		return 0, fmt.Errorf("belum ada pemesanan barang") // Cek pembagi nol
+	}
+
+	// Hitung persentase kuantitas per barang terhadap total kuantitas
+	persen := (float64(qtyPerBarang) / float64(qtyPerTahun)) * 100
+
+	// Pembulatan persentase ke bilangan bulat terdekat
+	persenBulat := math.Round(persen)
+
+	// Hitung biaya penyimpanan per barang
+	result := (persenBulat / 100) * biayaPenyimpananPertahun
+
+	return result, nil
+}
+
+// BiayaPemesananSetiapKaliPesan menghitung biaya per pemesanan dan membulatkan hasilnya
+func BiayaPemesananSetiapKaliPesan(biaya float64, frekuensi int) (int, error) {
+	if frekuensi == 0 {
+		return 0, fmt.Errorf("belum ada pemesanan barang")
+	}
+
+	// Hitung biaya per pemesanan
+	s := biaya / float64(frekuensi)
+
+	// Pembulatan ke bilangan bulat terdekat
+	bulatan := int(math.Round(s))
+
+	return bulatan, nil
+}
+
+func TotalBiayaPenyimpananPerTahun(db *gorm.DB, periode int) (float64, error) {
+	var totalBiaya float64
+
+	// Query SQL langsung
+	tsql := `
+		SELECT SUM(biaya_penyimpanan) AS total_biaya_penyimpanan
+		FROM penyimpanan
+		WHERE EXTRACT(YEAR FROM tanggal_penyimpanan) = ?
+	`
+
+	// Eksekusi query dan ambil hasilnya
+	err := db.Raw(tsql, periode).Scan(&totalBiaya).Error
+	if err != nil {
+		return 0, err // Kembalikan error jika ada masalah dengan query
+	}
+
+	return totalBiaya, nil
+
+}
+
+func TotalBiayaPemesananPerTahun(db *gorm.DB, periode int) (float64, error) {
+	var result struct {
+		TotalBiayaTelepon      float64 `gorm:"column:total_biaya_telepon"`
+		TotalBiayaAdm          float64 `gorm:"column:total_biaya_adm"`
+		TotalBiayaTransportasi float64 `gorm:"column:total_biaya_transportasi"`
+	}
+
+	var biayaPemesanan float64
+	// Query SQL langsung
+	tsql := `
+		SELECT 
+			COALESCE(SUM(biaya_telepon), 0) AS total_biaya_telepon,
+			COALESCE(SUM(biaya_adm), 0) AS total_biaya_adm,
+			COALESCE(SUM(biaya_transportasi), 0) AS total_biaya_transportasi
+		FROM pemesanan
+		WHERE EXTRACT(YEAR FROM tanggal_pemesanan) = ?
+	`
+
+	// Eksekusi query dan ambil hasilnya
+	err := db.Raw(tsql, periode).Scan(&result).Error
+	if err != nil {
+		return 0, err // Kembalikan error jika ada masalah dengan query
+	}
+
+	biayaPemesanan = result.TotalBiayaAdm + result.TotalBiayaTelepon + result.TotalBiayaTransportasi
+
+	return biayaPemesanan, nil
+
+}
+
+// TotalQuantityBarangPerTahun menghitung quantity barang berdasarkan ID barang dan tahun
+func TotalQuantityBarangPerTahun(db *gorm.DB, idBarang, periode int) (int, error) {
+	var quantity int
+
+	tsql := `
+		SELECT SUM(kuantitas::integer) AS total_quantity
+		FROM pemesanan
+		WHERE id_barang = ?
+	  	AND EXTRACT(YEAR FROM tanggal_pemesanan) = ?`
+	err := db.Raw(tsql, idBarang, periode).Scan(&quantity).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return quantity, nil
+}
+
+// TotalQuantityPerTahun menghitung quantity barang berdasarkan ID barang dan tahun
+func TotalQuantityPerTahun(db *gorm.DB, periode int) (int, error) {
+	var quantity int
+
+	tsql := `
+			SELECT SUM(CAST(kuantitas AS INTEGER)) AS total_kuantitas
+			FROM pemesanan
+			WHERE EXTRACT(YEAR FROM tanggal_pemesanan) = ?`
+	err := db.Raw(tsql, periode).Scan(&quantity).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return quantity, nil
+}
+
+// TotalFrekuensiPemesananPerBarangPerTahun menghitung frekuensi pemesanan berdasarkan ID barang dan tahun
+func TotalFrekuensiPemesananPerBarangPerTahun(db *gorm.DB, idBarang, periode int) (int, error) {
+	var frequency int
+
+	// Query SQL langsung
+	tsql := `
+		SELECT COUNT(*) AS frequency
+		FROM pemesanan
+		WHERE id_barang = ? 
+		AND EXTRACT(YEAR FROM tanggal_pemesanan) = ?
+	`
+
+	// Eksekusi query dan ambil hasilnya
+	err := db.Raw(tsql, idBarang, periode).Scan(&frequency).Error
+	if err != nil {
+		return 0, err // Kembalikan error jika ada masalah dengan query
+	}
+
+	return frequency, nil
+}
+
+func TotalFrekuensiPemesananPerTahun(db *gorm.DB, periode int) (int, error) {
+	var frequency int
+
+	// Query SQL langsung
+	tsql := `
+		SELECT COUNT(*) AS frekuensi_pemesanan
+		FROM pemesanan
+		WHERE EXTRACT(YEAR FROM tanggal_pemesanan) = ?
+	`
+
+	// Eksekusi query dan ambil hasilnya
+	err := db.Raw(tsql, periode).Scan(&frequency).Error
+	if err != nil {
+		return 0, err // Kembalikan error jika ada masalah dengan query
+	}
+
+	return frequency, nil
+}
+
 // service penjualan
 func CreatePenjualan(ctx *gin.Context) (models.Penjualan, error) {
 
@@ -33,6 +316,12 @@ func CreatePenjualan(ctx *gin.Context) (models.Penjualan, error) {
 	if err := ctx.ShouldBindJSON(&penjualan); err != nil {
 		return penjualan, err
 	}
+
+	hargaSatuanFloat := float64(penjualan.HargaSatuan)
+	totalHarga := float64(penjualan.Kuantitas) * hargaSatuanFloat
+	totalHarga = float64(int(totalHarga))
+
+	penjualan.TotalHarga = models.Float64OrString(totalHarga)
 
 	// Set the CreatedAt and UpdatedAt fields
 	now := time.Now()
@@ -59,12 +348,26 @@ func CreatePenjualan(ctx *gin.Context) (models.Penjualan, error) {
 }
 
 // GetPenjualans service to get all Penjualans
-func GetPenjualans(ctx *gin.Context) ([]models.Penjualan, error) {
+func GetPenjualans(ctx *gin.Context) ([]models.PenjualanWithBarangWithSupplier, error) {
 	db := database.GetDB()
-	var penjualans []models.Penjualan
+	var penjualans []models.PenjualanWithBarangWithSupplier
 
-	// Query to get all penjualans
-	tsql := `SELECT id, id_user, id_barang, kuantitas, harga_satuan, total_harga, tanggal_penjualan, COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at FROM penjualan`
+	// Query to get all penjualan with inner join and aliases
+	tsql := `SELECT 
+                 p.id AS id, 
+                 p.id_user AS id_user, 
+                 p.id_barang AS id_barang, 
+                 b.nama_barang AS barang_nama, 
+                 s.nama AS supplier_nama,
+                 p.kuantitas AS kuantitas, 
+                 p.harga_satuan AS harga_satuan, 
+                 p.total_harga AS total_harga, 
+                 p.tanggal_penjualan AS tanggal_penjualan, 
+                 COALESCE(p.created_at, NOW()) AS created_at, 
+                 COALESCE(p.updated_at, NOW()) AS updated_at
+            FROM penjualan p
+            INNER JOIN barang b ON p.id_barang = b.id
+            INNER JOIN supplier s ON b.id_supplier = s.id`
 
 	// Execute query
 	rows, err := db.Raw(tsql).Rows()
@@ -74,8 +377,20 @@ func GetPenjualans(ctx *gin.Context) ([]models.Penjualan, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var penjualan models.Penjualan
-		if err := rows.Scan(&penjualan.ID, &penjualan.IDUser, &penjualan.IDBarang, &penjualan.Kuantitas, &penjualan.HargaSatuan, &penjualan.TotalHarga, &penjualan.TanggalPenjualan, &penjualan.CreatedAt, &penjualan.UpdatedAt); err != nil {
+		var penjualan models.PenjualanWithBarangWithSupplier
+		if err := rows.Scan(
+			&penjualan.ID,
+			&penjualan.IDUser,
+			&penjualan.IDBarang,
+			&penjualan.BarangNama,
+			&penjualan.SupplierNama,
+			&penjualan.Kuantitas,
+			&penjualan.HargaSatuan,
+			&penjualan.TotalHarga,
+			&penjualan.TanggalPenjualan,
+			&penjualan.CreatedAt,
+			&penjualan.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		penjualans = append(penjualans, penjualan)
@@ -123,9 +438,12 @@ func UpdatePenjualan(updatePenjualan models.Penjualan) (models.Penjualan, error)
 	if updatePenjualan.HargaSatuan != 0 {
 		updatedFields["harga_satuan"] = updatePenjualan.HargaSatuan
 	}
-	if updatePenjualan.TotalHarga != 0 {
-		updatedFields["total_harga"] = updatePenjualan.TotalHarga
+	if updatePenjualan.Kuantitas != 0 || updatePenjualan.HargaSatuan != 0 {
+		updatedFields["total_harga"] = updatePenjualan.Kuantitas * models.IntOrString(updatePenjualan.HargaSatuan)
 	}
+	// if updatePenjualan.TotalHarga != 0 {
+	// 	updatedFields["total_harga"] = updatePenjualan.TotalHarga
+	// }
 	if !updatePenjualan.TanggalPenjualan.IsZero() {
 		updatedFields["tanggal_penjualan"] = updatePenjualan.TanggalPenjualan
 	}
@@ -327,9 +645,12 @@ func UpdatePemesanan(updatePemesanan models.Pemesanan) (models.Pemesanan, error)
 	if updatePemesanan.HargaSatuan != 0 {
 		updatedFields["harga_satuan"] = updatePemesanan.HargaSatuan
 	}
-	if updatePemesanan.TotalHarga != 0 {
-		updatedFields["total_harga"] = updatePemesanan.TotalHarga
+	if updatePemesanan.Kuantitas != 0 || updatePemesanan.HargaSatuan != 0 {
+		updatedFields["total_harga"] = updatePemesanan.Kuantitas * models.IntOrString(updatePemesanan.HargaSatuan)
 	}
+	// if updatePemesanan.TotalHarga != 0 {
+	// 	updatedFields["total_harga"] = updatePemesanan.TotalHarga
+	// }
 	if updatePemesanan.BiayaTelepon != 0 {
 		updatedFields["biaya_telepon"] = updatePemesanan.BiayaTelepon
 	}
@@ -339,9 +660,12 @@ func UpdatePemesanan(updatePemesanan models.Pemesanan) (models.Pemesanan, error)
 	if updatePemesanan.BiayaTransportasi != 0 {
 		updatedFields["biaya_transportasi"] = updatePemesanan.BiayaTransportasi
 	}
-	if updatePemesanan.TotalBiayaPemesanan != 0 {
-		updatedFields["total_biaya_pemesanan"] = updatePemesanan.TotalBiayaPemesanan
+	if updatePemesanan.BiayaTelepon != 0 || updatePemesanan.BiayaAdm != 0 || updatePemesanan.BiayaTransportasi != 0 {
+		updatedFields["total_biaya_pemesanan"] = updatePemesanan.BiayaTelepon + updatePemesanan.BiayaAdm + updatePemesanan.BiayaTransportasi
 	}
+	// if updatePemesanan.TotalBiayaPemesanan != 0 {
+	// 	updatedFields["total_biaya_pemesanan"] = updatePemesanan.TotalBiayaPemesanan
+	// }
 	if !updatePemesanan.TanggalPemesanan.IsZero() {
 		updatedFields["tanggal_pemesanan"] = updatePemesanan.TanggalPemesanan
 	}
@@ -715,7 +1039,6 @@ func DeletePenyimpanan(id int) error {
 
 // service barang
 func CreateBarang(ctx *gin.Context) (models.Barang, error) {
-
 	db := database.GetDB()
 
 	var barang models.Barang
@@ -728,23 +1051,17 @@ func CreateBarang(ctx *gin.Context) (models.Barang, error) {
 	barang.CreatedAt = now
 	barang.UpdatedAt = now
 
-	// Query to insert supplier and return the id
-	tsql := fmt.Sprintf(`
+	// Insert barang and return the id using GORM
+	err := db.Raw(`
 		INSERT INTO barang (id_supplier, nama_barang, created_at, updated_at) 
-		VALUES ('%d', '%s', '%s', '%s') RETURNING id`,
-		barang.IDSupplier, barang.NamaBarang, barang.CreatedAt.Format(time.RFC3339), barang.UpdatedAt.Format(time.RFC3339))
-
-	// Execute query and get the returned ID
-	var barangID int
-	err := db.Raw(tsql).Row().Scan(&barangID)
+		VALUES (?, ?, ?, ?) RETURNING id`,
+		barang.IDSupplier, barang.NamaBarang, barang.CreatedAt.Format(time.RFC3339), barang.UpdatedAt.Format(time.RFC3339)).
+		Scan(&barang.ID).Error
 	if err != nil {
 		return barang, err
 	}
 
-	barang.ID = barangID
-
 	return barang, nil
-
 }
 
 // GetBarangs service to get all Barangs with supplier details
