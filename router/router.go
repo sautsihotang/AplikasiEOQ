@@ -26,6 +26,8 @@ func StartApp() *gin.Engine {
 
 		//EOQ
 		apiV1Group.POST("/eoq", controllers.CalculateEOQ)
+		apiV1Group.GET("/eoq/all", controllers.GetEOQ)
+		apiV1Group.DELETE("/eoq", controllers.DeleteEoq)
 
 		//supplier
 		apiV1Group.POST("/supplier", controllers.CreateSupplier)

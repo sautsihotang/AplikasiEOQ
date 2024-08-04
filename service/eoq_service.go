@@ -98,9 +98,12 @@ func CalculateEOQ(ctx *gin.Context) (models.Eoq, error) {
 	if err != nil {
 		return eoq, fmt.Errorf("gagal mendapatkan biaya Penyimpanan per barang: %v", err)
 	}
-
 	fmt.Printf("biaya pemesanan setiap kali pesan: %d\n", s)
 	fmt.Printf("biaya penyimpanan per barang: %.f\n", h)
+
+	fmt.Printf("D %d\n", quantityBarangPerTahun)
+	fmt.Printf("S %d\n", s)
+	fmt.Printf("H %.f\n", h)
 
 	nilaiEoq, err := calNilaiEoq(quantityBarangPerTahun, s, h)
 	if err != nil {
@@ -114,6 +117,7 @@ func CalculateEOQ(ctx *gin.Context) (models.Eoq, error) {
 	now := time.Now()
 	eoq.CreatedAt = now
 	eoq.UpdatedAt = now
+	eoq.TanggalPerhitungan = now
 	eoq.NilaiEOQ = nilaiEoq // bagaiaman cara agar data yg masuk ke db %.f
 
 	tsql := fmt.Sprintf(`
@@ -165,6 +169,8 @@ func BiayaPenyimpananPerBarang(qtyPerBarang, qtyPerTahun int, biayaPenyimpananPe
 
 	// Hitung biaya penyimpanan per barang
 	result := (persenBulat / 100) * biayaPenyimpananPertahun
+
+	result = result / float64(qtyPerBarang)
 
 	return result, nil
 }
@@ -305,6 +311,63 @@ func TotalFrekuensiPemesananPerTahun(db *gorm.DB, periode int) (int, error) {
 	}
 
 	return frequency, nil
+}
+
+// GetEOQ service to get all perhitungan eoq
+func GetEOQ(ctx *gin.Context) ([]models.EoqWithBarang, error) {
+	db := database.GetDB()
+	var eoqs []models.EoqWithBarang
+
+	// Query to get all eoq
+	tsql := `SELECT 
+            e.id, 
+            e.id_barang, 
+			b.nama_barang,
+            e.nilai_eoq, 
+            e. periode, 
+            e.tanggal_perhitungan, 
+            COALESCE(e.created_at, NOW()) as created_at, 
+            COALESCE(e.updated_at, NOW()) as updated_at 
+         FROM 
+            eoq  e
+		INNER JOIN barang b on e.id_barang = b.id
+         ORDER BY 
+            created_at DESC`
+
+	// Execute query
+	rows, err := db.Raw(tsql).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var eoq models.EoqWithBarang
+		if err := rows.Scan(&eoq.ID, &eoq.IDBarang, &eoq.NamaBarang, &eoq.NilaiEOQ, &eoq.Periode, &eoq.TanggalPerhitungan, &eoq.CreatedAt, &eoq.UpdatedAt); err != nil {
+			return nil, err
+		}
+		eoqs = append(eoqs, eoq)
+	}
+
+	return eoqs, nil
+}
+
+func DeleteEoq(id int) error {
+	db := database.GetDB()
+
+	// Query to delete eoq by ID
+	tsql := `DELETE FROM eoq WHERE id = ?`
+
+	// Execute query
+	result := db.Exec(tsql, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return result.Error
+	}
+
+	return nil
 }
 
 // service penjualan

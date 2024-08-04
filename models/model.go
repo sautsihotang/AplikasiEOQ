@@ -85,3 +85,14 @@ type PenjualanWithBarangWithSupplier struct {
 	CreatedAt        time.Time       `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
 }
+
+type EoqWithBarang struct {
+	ID                 int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	IDBarang           int       `gorm:"index" json:"id_barang"` // Index to reference barang
+	NamaBarang         string    `json:"nama_barang"`            //tambahan
+	NilaiEOQ           float64   `gorm:"type:decimal(10,2)" json:"nilai_eoq"`
+	Periode            string    `gorm:"type:varchar(255)" json:"periode"`
+	TanggalPerhitungan time.Time `json:"tanggal_perhitungan"`
+	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}

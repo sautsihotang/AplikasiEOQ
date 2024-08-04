@@ -36,6 +36,48 @@ func CalculateEOQ(ctx *gin.Context) {
 	}
 }
 
+// controller get all eoq
+func GetEOQ(ctx *gin.Context) {
+	eoq, err := service.GetEOQ(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": err.Error(),
+			"eoq":     eoq,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":    200,
+			"message": "success - Get all eoq",
+			"eoq":     eoq,
+		})
+	}
+}
+
+func DeleteEoq(ctx *gin.Context) {
+	idStr := ctx.Query("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": "Invalid ID",
+		})
+		return
+	}
+	err = service.DeleteEoq(id)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": err.Error(),
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":    200,
+			"message": "success - delete Eoq",
+		})
+	}
+}
+
 // controller create penjualan
 func CreatePenjualan(ctx *gin.Context) {
 	penjualan, err := service.CreatePenjualan(ctx)
