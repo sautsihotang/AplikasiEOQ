@@ -318,6 +318,36 @@ func DeletePemesanan(ctx *gin.Context) {
 	}
 }
 
+func Login(ctx *gin.Context) {
+	data, err := service.Login(ctx)
+
+	// Check if the user ID is zero or null
+	if data.ID == 0 {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "Username atau password Salah !",
+			"data":    nil,
+		})
+		return
+	}
+
+	// Handle other potential errors
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"code":    http.StatusBadRequest,
+			"message": err.Error(),
+			"data":    nil,
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"code":    http.StatusOK,
+		"message": "Success login",
+		"data":    data,
+	})
+}
+
 // controller create penyimpanan
 func CreateUser(ctx *gin.Context) {
 	user, err := service.CreateUser(ctx)

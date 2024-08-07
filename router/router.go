@@ -57,6 +57,9 @@ func StartApp() *gin.Engine {
 		apiV1Group.PUT("/user", controllers.UpdateUser)
 		apiV1Group.DELETE("/user", controllers.DeleteUser)
 
+		//login
+		apiV1Group.POST("/login", controllers.Login)
+
 		//pemesanan
 		apiV1Group.POST("/pemesanan", controllers.CreatePemesanan)
 		apiV1Group.GET("/pemesanan/all", controllers.GetPemesanans)

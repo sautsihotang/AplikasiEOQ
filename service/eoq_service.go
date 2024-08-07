@@ -789,6 +789,33 @@ func DeletePemesanan(id int) error {
 	return nil
 }
 
+func Login(ctx *gin.Context) (models.User, error) {
+	db := database.GetDB()
+
+	var user models.User
+	if err := ctx.ShouldBindJSON(&user); err != nil {
+		return user, err
+	}
+
+	// Prepare query to find the user by username and password
+	query := `
+		SELECT id, nama, username, posisi, hp, alamat, created_at, updated_at 
+		FROM "user" 
+		WHERE username = ? AND password = ?`
+
+	// Execute query and scan the result into the user struct
+	err := db.Raw(query, user.Username, user.Password).Scan(&user).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return user, gorm.ErrRecordNotFound
+		}
+		return user, err
+	}
+
+	// Return the user object
+	return user, nil
+}
+
 func CreateUser(ctx *gin.Context) (models.User, error) {
 	db := database.GetDB()
 
