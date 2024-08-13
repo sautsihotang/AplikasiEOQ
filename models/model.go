@@ -96,3 +96,16 @@ type EoqWithBarang struct {
 	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
+
+type StockBarangModel struct {
+	IDBarang                int    `json:"id_barang"`
+	NamaBarang              string `gorm:"index" json:"nama_barang"`
+	TotalKuantitasPemesanan int    `json:"total_kuantitas_pemesanan"`
+	TotalKuantitasPenjualan int    `json:"total_kuantitas_penjualan"`
+	StockBarang             int    `json:"stok_barang"`
+}
+
+type ReqStock struct {
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+}

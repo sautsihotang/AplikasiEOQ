@@ -26,6 +26,76 @@ type BarangWithSupplier struct {
 	SupplierAlamat     string    `json:"supplier_alamat"`
 }
 
+// GetBarangs service to get all Barangs with supplier details
+func CalculateStock(ctx *gin.Context) ([]models.StockBarangModel, error) {
+	db := database.GetDB()
+
+	var reqStock models.ReqStock
+	if err := ctx.ShouldBindJSON(&reqStock); err != nil {
+		return nil, err
+	}
+
+	// Query to get all Barangs with supplier details
+	tsql := `SELECT 
+                b.id AS id_barang, 
+                b.nama_barang AS nama_barang, 
+                COALESCE(p.total_kuantitas_pemesanan, 0) AS total_kuantitas_pemesanan,
+                COALESCE(j.total_kuantitas_penjualan, 0) AS total_kuantitas_penjualan,
+                COALESCE(p.total_kuantitas_pemesanan, 0) - COALESCE(j.total_kuantitas_penjualan, 0) AS stok_barang
+            FROM 
+                barang b
+            LEFT JOIN (
+                SELECT
+                    id_barang,
+                    SUM(COALESCE(kuantitas, 0)) AS total_kuantitas_pemesanan
+                FROM
+                    pemesanan
+                WHERE
+                    tanggal_pemesanan BETWEEN ? AND ?
+                GROUP BY
+                    id_barang
+            ) p ON b.id = p.id_barang
+            LEFT JOIN (
+                SELECT
+                    id_barang,
+                    SUM(COALESCE(kuantitas, 0)) AS total_kuantitas_penjualan
+                FROM
+                    penjualan
+                WHERE
+                    tanggal_penjualan BETWEEN ? AND ?
+                GROUP BY
+                    id_barang
+            ) j ON b.id = j.id_barang
+            LEFT JOIN
+                supplier s ON b.id_supplier = s.id
+            ORDER BY
+                b.id;`
+
+	// Execute query
+	rows, err := db.Raw(tsql, reqStock.StartDate, reqStock.EndDate, reqStock.StartDate, reqStock.EndDate).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stocks []models.StockBarangModel
+	for rows.Next() {
+		var stock models.StockBarangModel
+		if err := rows.Scan(
+			&stock.IDBarang,
+			&stock.NamaBarang,
+			&stock.TotalKuantitasPemesanan,
+			&stock.TotalKuantitasPenjualan,
+			&stock.StockBarang,
+		); err != nil {
+			return nil, err
+		}
+		stocks = append(stocks, stock)
+	}
+
+	return stocks, nil
+}
+
 // CalculateEOQ menghitung EOQ dan frekuensi pemesanan
 func CalculateEOQ(ctx *gin.Context) (models.Eoq, error) {
 	db := database.GetDB()

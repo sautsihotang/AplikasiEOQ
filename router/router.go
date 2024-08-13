@@ -73,6 +73,9 @@ func StartApp() *gin.Engine {
 		apiV1Group.GET("/penjualan", controllers.GetPenjualanbyId)
 		apiV1Group.PUT("/penjualan", controllers.UpdatePenjualan)
 		apiV1Group.DELETE("/penjualan", controllers.DeletePenjualan)
+
+		//stock barang
+		apiV1Group.POST("/stock", controllers.CalculateStock)
 	}
 
 	return r

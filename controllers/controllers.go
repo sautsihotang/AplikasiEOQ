@@ -17,8 +17,25 @@ func Index(ctx *gin.Context) {
 	})
 }
 
-// hitung eoq
+// hitung stock barang
+func CalculateStock(ctx *gin.Context) {
+	stocks, err := service.CalculateStock(ctx)
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"code":    400,
+			"message": err.Error(),
+			"stock":   stocks,
+		})
+	} else {
+		ctx.JSON(200, gin.H{
+			"code":    200,
+			"message": "success - Get all stock barang",
+			"stock":   stocks,
+		})
+	}
+}
 
+// hitung eoq
 func CalculateEOQ(ctx *gin.Context) {
 	eoq, err := service.CalculateEOQ(ctx)
 	if err != nil {
