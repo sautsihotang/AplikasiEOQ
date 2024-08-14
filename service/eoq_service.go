@@ -191,9 +191,9 @@ func CalculateEOQ(ctx *gin.Context) (models.Eoq, error) {
 	eoq.NilaiEOQ = nilaiEoq // bagaiaman cara agar data yg masuk ke db %.f
 
 	tsql := fmt.Sprintf(`
-		INSERT INTO eoq (id_barang, nilai_eoq, periode, tanggal_perhitungan, created_at, updated_at) 
-		VALUES ('%d', '%f', '%s', '%s', '%s', '%s') RETURNING id`,
-		eoq.IDBarang, eoq.NilaiEOQ, eoq.Periode, eoq.TanggalPerhitungan.Format(time.RFC3339), eoq.CreatedAt.Format(time.RFC3339), eoq.UpdatedAt.Format(time.RFC3339))
+		INSERT INTO eoq (id_barang, nilai_eoq, d, s, h, periode, tanggal_perhitungan, created_at, updated_at) 
+		VALUES ('%d', '%f', '%d', '%d', '%f', '%s', '%s', '%s', '%s') RETURNING id`,
+		eoq.IDBarang, eoq.NilaiEOQ, quantityBarangPerTahun, s, h, eoq.Periode, eoq.TanggalPerhitungan.Format(time.RFC3339), eoq.CreatedAt.Format(time.RFC3339), eoq.UpdatedAt.Format(time.RFC3339))
 
 	var eoqID int
 	err = db.Raw(tsql).Row().Scan(&eoqID)
@@ -393,7 +393,10 @@ func GetEOQ(ctx *gin.Context) ([]models.EoqWithBarang, error) {
             e.id, 
             e.id_barang, 
 			b.nama_barang,
-            e.nilai_eoq, 
+            e.nilai_eoq,
+			e.d,
+			e.s,
+			e.h, 
             e. periode, 
             e.tanggal_perhitungan, 
             COALESCE(e.created_at, NOW()) as created_at, 
@@ -413,7 +416,7 @@ func GetEOQ(ctx *gin.Context) ([]models.EoqWithBarang, error) {
 
 	for rows.Next() {
 		var eoq models.EoqWithBarang
-		if err := rows.Scan(&eoq.ID, &eoq.IDBarang, &eoq.NamaBarang, &eoq.NilaiEOQ, &eoq.Periode, &eoq.TanggalPerhitungan, &eoq.CreatedAt, &eoq.UpdatedAt); err != nil {
+		if err := rows.Scan(&eoq.ID, &eoq.IDBarang, &eoq.NamaBarang, &eoq.NilaiEOQ, &eoq.D, &eoq.S, &eoq.H, &eoq.Periode, &eoq.TanggalPerhitungan, &eoq.CreatedAt, &eoq.UpdatedAt); err != nil {
 			return nil, err
 		}
 		eoqs = append(eoqs, eoq)
